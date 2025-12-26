@@ -135,10 +135,10 @@ recent_wr = (recent_10["won"].sum() / len(recent_10)) * 100
 trend_diff = recent_wr - avg_wr
 
 # Manual localization for streak labels since I missed them in i18n
-streak_label = "Stable"
-if recent_wr >= 70: streak_label = "🔥 Hot Streak" if lang == "en" else "🔥 Sıcak Seri"
-elif recent_wr <= 30: streak_label = "❄️ Cold Streak" if lang == "en" else "❄️ Soğuk Seri"
-else: streak_label = "Stable" if lang == "en" else "İstikrarlı"
+streak_label = get_text("profile.stable", lang)
+if recent_wr >= 70: streak_label = get_text("profile.hot_streak", lang)
+elif recent_wr <= 30: streak_label = get_text("profile.cold_streak", lang)
+else: streak_label = get_text("profile.stable", lang)
 
 # Use generic format if hot_streak key can't be repurposed easily, or construct manually
 # I'll use a manual construction to ensure correctness
@@ -162,7 +162,7 @@ if not phase_wr.empty:
         msg = get_text("insight.strongest_early", lang).format(win_rate=f"{phase_wr.max():.1f}")
     else:
         # Fallback/Construct for Mid/Late
-        prefix = "Strongest in" if lang == "en" else "En İyi Dönem:"
+        prefix = get_text("profile.strongest_in", lang)
         msg = f"⏱️ {prefix} **{p_name}**: **{phase_wr.max():.1f}% {get_text('common.win_rate', lang)}**"
     insights.append(msg)
 
@@ -242,28 +242,28 @@ with tab2:
     MIN_SAMPLE = 5
     
     with col_map:
-        st.markdown(f"### 🗺️ Best & Worst {get_text('common.map', lang)}")
+        st.markdown(f"### 🗺️ {get_text('profile.best_worst', lang)} {get_text('common.map', lang)}")
         map_stats = df.groupby("map_name")["won"].agg(['count', 'sum']).reset_index()
         map_stats.columns = [get_text("common.map", lang), get_text("common.games", lang), "Wins"]
         map_stats["WinRate"] = (map_stats["Wins"] / map_stats[get_text("common.games", lang)] * 100)
         
         # Calculate CI for each
-        map_stats["CI_MoE"] = map_stats.apply(lambda x: wilson_score_interval(x["Wins"], x[get_text("common.games", lang)])[2], axis=1)
-        map_stats["Display WR"] = map_stats.apply(lambda x: f"{x['WinRate']:.1f}% ±{x['CI_MoE']:.1f}%", axis=1)
+        map_stats[get_text("profile.ci_moe", lang)] = map_stats.apply(lambda x: wilson_score_interval(x["Wins"], x[get_text("common.games", lang)])[2], axis=1)
+        map_stats[get_text("profile.display_wr", lang)] = map_stats.apply(lambda x: f"{x['WinRate']:.1f}% ±{x[get_text('profile.ci_moe', lang)]:.1f}%", axis=1)
         
         valid_maps = map_stats[map_stats[get_text("common.games", lang)] >= MIN_SAMPLE].sort_values("WinRate", ascending=False)
         insufficient = map_stats[map_stats[get_text("common.games", lang)] < MIN_SAMPLE]
         
         if not valid_maps.empty:
             st.dataframe(
-                valid_maps[[get_text("common.map", lang), get_text("common.games", lang), "Wins", "Display WR"]], 
+                valid_maps[[get_text("common.map", lang), get_text("common.games", lang), "Wins", get_text("profile.display_wr", lang)]],  
                 use_container_width=True
             )
         else:
-            st.info(f"No maps with {MIN_SAMPLE}+ games.")
+            st.info(get_text("profile.no_maps_min", lang).format(min=MIN_SAMPLE))
             
         if not insufficient.empty:
-            with st.expander(f"Maps with < {MIN_SAMPLE} games (Insufficient Data)"):
+            with st.expander(get_text("profile.maps_insufficient", lang).format(min=MIN_SAMPLE)):
                 st.dataframe(insufficient, use_container_width=True)
             
     with col_civ:
@@ -272,8 +272,8 @@ with tab2:
         civ_stats.columns = [get_text("common.civ", lang), get_text("common.games", lang), "Wins"]
         civ_stats["WinRate"] = (civ_stats["Wins"] / civ_stats[get_text("common.games", lang)] * 100)
         
-        civ_stats["CI_MoE"] = civ_stats.apply(lambda x: wilson_score_interval(x["Wins"], x[get_text("common.games", lang)])[2], axis=1)
-        civ_stats["Display WR"] = civ_stats.apply(lambda x: f"{x['WinRate']:.1f}% ±{x['CI_MoE']:.1f}%", axis=1)
+        civ_stats[get_text("profile.ci_moe", lang)] = civ_stats.apply(lambda x: wilson_score_interval(x["Wins"], x[get_text("common.games", lang)])[2], axis=1)
+        civ_stats[get_text("profile.display_wr", lang)] = civ_stats.apply(lambda x: f"{x['WinRate']:.1f}% ±{x[get_text('profile.ci_moe', lang)]:.1f}%", axis=1)
         
         # User Feedback: Min 10 for Civs
         MIN_SAMPLE_CIV = 10
@@ -282,9 +282,9 @@ with tab2:
         if not valid_civs.empty:
             fig = plot_civ_win_rates(valid_civs.head(10).rename(columns={get_text("common.civ", lang): "civ_name", "WinRate": "win_rate", get_text("common.games", lang): "total_games"}))
             st.plotly_chart(fig, use_container_width=True)
-            st.dataframe(valid_civs[[get_text("common.civ", lang), get_text("common.games", lang), "Wins", "Display WR"]], use_container_width=True)
+            st.dataframe(valid_civs[[get_text("common.civ", lang), get_text("common.games", lang), "Wins", get_text("profile.display_wr", lang)]], use_container_width=True)
         else:
-            st.info(f"No civs with {MIN_SAMPLE_CIV}+ games.")
+            st.info(get_text("profile.no_civs_min", lang).format(min=MIN_SAMPLE_CIV))
 
 # ================= Tabs 3: Matchups =================
 with tab3:
@@ -300,17 +300,17 @@ with tab3:
         opp_civ_stats.columns = ["Opponent Civ", get_text("common.games", lang), "Wins Against"]
         opp_civ_stats["WinRate"] = (opp_civ_stats["Wins Against"] / opp_civ_stats[get_text("common.games", lang)] * 100)
         
-        opp_civ_stats["CI_MoE"] = opp_civ_stats.apply(lambda x: wilson_score_interval(x["Wins Against"], x[get_text("common.games", lang)])[2], axis=1)
-        opp_civ_stats["Display WR"] = opp_civ_stats.apply(lambda x: f"{x['WinRate']:.1f}% ±{x['CI_MoE']:.1f}%", axis=1)
+        opp_civ_stats[get_text("profile.ci_moe", lang)] = opp_civ_stats.apply(lambda x: wilson_score_interval(x["Wins Against"], x[get_text("common.games", lang)])[2], axis=1)
+        opp_civ_stats[get_text("profile.display_wr", lang)] = opp_civ_stats.apply(lambda x: f"{x['WinRate']:.1f}% ±{x[get_text('profile.ci_moe', lang)]:.1f}%", axis=1)
 
         valid_matchups = opp_civ_stats[opp_civ_stats[get_text("common.games", lang)] >= MIN_SAMPLE].sort_values("WinRate", ascending=True)
         
         if not valid_matchups.empty:
             st.markdown(f"**{get_text('matchup.most_difficult', lang)}** (Civ)")
-            st.dataframe(valid_matchups.head(5)[["Opponent Civ", get_text("common.games", lang), "Display WR"]], use_container_width=True)
+            st.dataframe(valid_matchups.head(5)[["Opponent Civ", get_text("common.games", lang), get_text("profile.display_wr", lang)]], use_container_width=True)
             
             st.markdown(f"**{get_text('matchup.easiest', lang)}** (Civ)")
-            st.dataframe(valid_matchups.tail(5).sort_values("WinRate", ascending=False)[["Opponent Civ", get_text("common.games", lang), "Display WR"]], use_container_width=True)
+            st.dataframe(valid_matchups.tail(5).sort_values("WinRate", ascending=False)[["Opponent Civ", get_text("common.games", lang), get_text("profile.display_wr", lang)]], use_container_width=True)
         else:
             st.info(get_text("matchup.need_civ_games", lang).format(min=MIN_SAMPLE))
             
@@ -360,7 +360,7 @@ with tab3:
                     most = df_rivals.sort_values(get_text("common.games", lang), ascending=False).iloc[0]
                     st.info(f"🤝 **{get_text('profile.most_played', lang)}:** {most[get_text('common.opponent', lang)]} ({most[get_text('common.games', lang)]} games)")
                     
-                    with st.expander("Full Rivalry List"):
+                    with st.expander(get_text("profile.full_rivalry_list", lang)):
                          st.dataframe(df_rivals.sort_values(get_text("common.games", lang), ascending=False).style.format({"WinRate": "{:.1f}%"}), use_container_width=True)
                 else:
                      st.info(get_text("common.no_data", lang))

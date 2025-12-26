@@ -260,6 +260,25 @@ TRANSLATIONS = {
     "profile.remove_player": {"en": "Remove Player", "tr": "Oyuncuyu Sil"},
     "profile.updated": {"en": "Updated player.", "tr": "Oyuncu güncellendi."},
     "profile.removed": {"en": "Removed player.", "tr": "Oyuncu silindi."},
+    # Newly added keys
+    "profile.hot_streak": {"en": "🔥 Hot Streak", "tr": "🔥 Sıcak Seri"},
+    "profile.cold_streak": {"en": "❄️ Cold Streak", "tr": "❄️ Soğuk Seri"},
+    "profile.stable": {"en": "Stable", "tr": "İstikrarlı"},
+    "profile.strongest_early": {"en": "Strongest in Early Game", "tr": "En İyi: Erken Oyun"},
+    "profile.strongest_in": {"en": "Strongest in", "tr": "En İyi Dönem"},
+    "profile.best_worst": {"en": "Best & Worst", "tr": "En İyi & En Kötü"},
+    "profile.display_wr": {"en": "Display WR", "tr": "Görünen KO"},
+    "profile.ci_moe": {"en": "CI_MoE", "tr": "Hata Payı"},
+    "profile.no_maps_min": {"en": "No maps with {min}+ games.", "tr": "{min}+ maçı olan harita yok."},
+    "profile.maps_insufficient": {"en": "Maps with < {min} games (Insufficient Data)", "tr": "{min}'den az maç yapılan haritalar (Yetersiz)"},
+    "profile.no_civs_min": {"en": "No civs with {min}+ games.", "tr": "{min}+ maçı olan medeniyet yok."},
+    "profile.full_rivalry_list": {"en": "Full Rivalry List", "tr": "Tüm Rakip Listesi"},
+    "overview.high_elo_wins": {"en": "Wins vs Higher ELO", "tr": "Yüksek ELO Galibiyetleri"},
+    "profile.matchups_difficult": {"en": "Most Difficult", "tr": "En Zorlu"},
+    "profile.matchups_easiest": {"en": "Easiest", "tr": "En Kolay"},
+    "overview.upsets_desc": {"en": "Most wins against statistically stronger opponents.", "tr": "İstatistiksel olarak daha güçlü rakiplere karşı en çok galibiyet."},
+
+
 }
 
 def get_text(key: str, lang: str = DEFAULT_LANG) -> str:

@@ -439,8 +439,8 @@ with tab3:
             with col_hof3:
                 st.markdown(f"#### 🗡️ {get_text('overview.giant_slayer', lang)}")
                 if slayer[col_upsets] > 0:
-                    st.metric(f"{slayer[get_text('common.player', lang)]}", f"{slayer[col_upsets]} {get_text('overview.upsets', lang)}", get_text("overview.high_elo_win", lang) if 'overview.high_elo_win' in locals() else "Yüksek ELO Galibiyeti")
-                    st.caption(f"Most wins against statistically stronger opponents.")
+                    st.metric(f"{slayer[get_text('common.player', lang)]}", f"{slayer[col_upsets]} {get_text('overview.upsets', lang)}", get_text("overview.high_elo_wins", lang))
+                    st.caption(get_text("overview.upsets_desc", lang))
                 else:
                         st.metric("Yok", f"0 {get_text('overview.upsets', lang)}")
         except KeyError:
