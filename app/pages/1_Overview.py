@@ -49,7 +49,7 @@ with tab1:
             ).order_by(desc(Player.elo_rm_1v1)).all()
         else:
             players = []
-            st.warning(get_text("common.no_data", lang) + " (No players selected)")
+            st.warning(get_text("common.no_data", lang) + " (Oyuncu seçilmedi)")
         
         # Calculate stats for each player
         from services.db.models import MatchPlayer
@@ -77,7 +77,7 @@ with tab1:
                 "Team ELO": r.elo_rm_team,
                 get_text("common.games", lang): total_games,
                 get_text("common.win_rate", lang): f"{win_rate:.1f}%",
-                "Last Match": r.last_match_at.strftime("%Y-%m-%d") if r.last_match_at else "–"
+                get_text("label.last_match", lang): r.last_match_at.strftime("%Y-%m-%d") if r.last_match_at else "–"
             })
         
         if data:
@@ -154,7 +154,7 @@ with tab1:
             st.markdown(f"#### ⚔️ {get_text('overview.elo_gladiators', lang)}")
             # Base chart
             base = alt.Chart(df_arena).encode(
-                x=alt.X('Player', sort='-y', axis=alt.Axis(labelAngle=-45, labelFontWeight='bold', labelColor='black', labelFontSize=12)),
+                x=alt.X('Player', sort='-y', axis=alt.Axis(labelAngle=-45, labelFontWeight='bold', labelColor='black', labelFontSize=12), title=get_text("common.player", lang)),
                 y=alt.Y('ELO', scale=alt.Scale(domain=[min(df_arena["ELO"])-50, max(df_arena["ELO"])+50]))
             )
             
@@ -184,7 +184,7 @@ with tab1:
                 "Oynadığı Maç" if lang == "tr" else "Total Games": "Games"
             }
             
-            selected_label = st.selectbox("Grafik Seçimi", list(metric_map.keys()))
+            selected_label = st.selectbox(get_text("common.select_chart", lang), list(metric_map.keys()))
             selected_metric = metric_map[selected_label]
             
             # Bar Chart instead of Pie Chart (Requested by User)
@@ -302,7 +302,7 @@ with tab2:
             get_text("overview.form_rating", lang): int(form_rating),
             get_text("overview.sos", lang): int(sos_rating),
             get_text("overview.upsets", lang): upset_count,
-            "Current ELO": p.elo_rm_1v1
+            get_text("label.current_elo", lang): p.elo_rm_1v1
         })
         
     if power_data:
@@ -331,7 +331,7 @@ with tab2:
             },
             use_container_width=True
         )
-        st.caption("*Analysis based on last 20 1v1 matches.*")
+        st.caption(f"*{get_text('table.perf_context', lang)} (1v1)*")
     else:
         st.info(get_text("common.no_data", lang))
 
@@ -381,7 +381,7 @@ with tab3:
                     except ValueError:
                         started = datetime.now() # Fallback
 
-                st.metric(f"{p_name}", f"{dur_min} min", f"{row_mar.map_name}")
+                st.metric(f"{p_name}", f"{dur_min} {get_text('common.duration_min', lang) if 'common.duration_min' in locals() else 'dk'}", f"{row_mar.map_name}")
                 st.caption(get_text("table.saved_at", lang).format(date=started.strftime('%Y-%m-%d'), civ=row_mar.civ_name))
             else:
                 st.info(get_text("common.no_data", lang))
@@ -439,10 +439,10 @@ with tab3:
             with col_hof3:
                 st.markdown(f"#### 🗡️ {get_text('overview.giant_slayer', lang)}")
                 if slayer[col_upsets] > 0:
-                    st.metric(f"{slayer[get_text('common.player', lang)]}", f"{slayer[col_upsets]} Upsets", "Wins vs Higher ELO")
+                    st.metric(f"{slayer[get_text('common.player', lang)]}", f"{slayer[col_upsets]} {get_text('overview.upsets', lang)}", get_text("overview.high_elo_win", lang) if 'overview.high_elo_win' in locals() else "Yüksek ELO Galibiyeti")
                     st.caption(f"Most wins against statistically stronger opponents.")
                 else:
-                        st.metric("None", "0 Upsets")
+                        st.metric("Yok", f"0 {get_text('overview.upsets', lang)}")
         except KeyError:
                 with col_hof3: st.text("Data Error")
     else:

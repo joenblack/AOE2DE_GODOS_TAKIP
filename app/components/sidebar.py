@@ -19,6 +19,7 @@ def render_sidebar():
         options=["Türkçe", "English"],
         index=0 if st.session_state["language"] == "tr" else 1
     )
+    st.sidebar.markdown("**Designed by L**")
     
     st.session_state["language"] = lang_map[selected_label]
     lang = st.session_state["language"]

@@ -32,7 +32,7 @@ tab1, tab2, tab3 = st.tabs([
 # -----------------------------------------------------------------------------
 with tab1:
     st.header(get_text('analytics.elo_race', lang))
-    st.info("Visualizing ELO progression over time.")
+    st.info(get_text('analytics.visualizing_elo', lang))
     
     # query matches timestamps and ELOs
     # We need: date, player_name, elo_after
@@ -214,7 +214,7 @@ with tab2:
 # TAB 3: Raw Data
 # -----------------------------------------------------------------------------
 with tab3:
-    st.subheader(f"{get_text('analytics.raw_data', lang)} (Last 100)")
+    st.subheader(f"{get_text('analytics.raw_data', lang)} ({get_text('common.all', lang)})")
     query_raw = text("""
         SELECT 
             m.match_id, 
@@ -284,13 +284,13 @@ with tab3:
                 "player": get_text("common.player", lang),
                 "civ_name": get_text("common.civ", lang),
                 "won": get_text("table.result", lang),
-                "elo": "ELO"
+                "elo": get_text("analytics.col_elo", lang)
             }, inplace=True)
             
             st.dataframe(df_display, use_container_width=True)
             
             csv = df_display.to_csv(index=False).encode('utf-8')
-            st.download_button("Download CSV", csv, "matches_dump.csv", "text/csv")
+            st.download_button(get_text("analytics.download_csv", lang), csv, "matches_dump.csv", "text/csv")
         else:
             st.info(get_text("common.no_data", lang))
     except Exception as e:

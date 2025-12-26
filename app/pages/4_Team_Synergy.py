@@ -58,7 +58,7 @@ tracked_pids = {p.aoe_profile_id: (p.display_name or str(p.aoe_profile_id)) for 
 tracked_pid_set = set(tracked_pids.keys())
 
 if len(tracked_pid_set) < 2:
-    st.warning("Need at least 2 tracked players to calculate synergy.")
+    st.warning(get_text('synergy.min_games_warning', lang))
     st.stop()
 
 ids_str = ",".join(str(pid) for pid in tracked_pid_set)

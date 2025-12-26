@@ -24,9 +24,9 @@ st.title(f"🛠 {get_text('admin.title', lang)}")
 
 st.markdown(f"### {get_text('admin.data_management', lang)}")
 
-with st.expander("🚨 Data Repair Tool (Advanced)", expanded=False):
-    st.warning("This tool deduplicates match_players and adds a UNIQUE constraint. Run only once if you suspect data duplication.")
-    if st.button("Fix Duplicates & Add Constraint"):
+with st.expander(f"🚨 {get_text('admin.data_repair', lang)}", expanded=False):
+    st.warning(get_text('admin.data_repair_warn', lang))
+    if st.button(get_text('admin.data_repair_btn', lang)):
         from sqlalchemy import text
         from services.db.database import SessionLocal
         
@@ -61,7 +61,7 @@ with st.expander("🚨 Data Repair Tool (Advanced)", expanded=False):
             db.execute(stmt_index)
             db.commit()
             
-            st.success(f"Operation Complete! Cleared {cleaned_count} duplicates. Unique Index ensured.")
+            st.success(get_text('admin.data_repair_success', lang).format(count=cleaned_count))
         except Exception as e:
             st.error(f"Error: {e}")
         finally:
@@ -152,23 +152,23 @@ with st.form("add_player_form"):
             
             resolved = resolve_profile_from_steam_id(new_steam_id)
             if not resolved:
-                st.error("Could not resolve Profile ID from SteamID64 via WorldsEdgeLink. Please enter Profile ID manually.")
+                st.error("SteamID64 üzerinden Profil ID bulunamadı. Lütfen Profil ID'yi manuel girin.")
                 st.stop()
             pid, alias = resolved
             new_profile_id = str(pid)
             resolved_alias = alias
             if not new_name:
                 new_name = alias
-            st.success(f"Resolved profile_id={new_profile_id} (alias={alias}) via WorldsEdgeLink.")
+            st.success(f"WorldsEdgeLink üzerinden profile_id={new_profile_id} (alias={alias}) çözüldü.")
 
         if not new_profile_id:
-            st.error("AoE2 Profile ID is required (directly or resolved from SteamID64).")
+            st.error("AoE2 Profile ID gereklidir (manuel veya SteamID64 üzerinden).")
             st.stop()
 
         try:
             pid_int = int(new_profile_id)
         except ValueError:
-            st.error("Profile ID must be a number.")
+            st.error("Profile ID sayı olmalıdır.")
             st.stop()
 
         if not new_name:
@@ -184,9 +184,9 @@ with st.form("add_player_form"):
                     exists.steam_id = new_steam_id if new_steam_id else exists.steam_id
                     exists.added_at = datetime.utcnow()
                     db.commit()
-                    st.success(f"Promoted existing match-player {new_name} (profile_id={pid_int}) to Watchlist.")
+                    st.success(f"Mevcut {new_name} (profile_id={pid_int}) oyuncusu İzleme Listesine terfi ettirildi.")
                 else:
-                    st.error(f"Player already exists: {exists.display_name} (profile_id={exists.aoe_profile_id})")
+                    st.error(f"Oyuncu zaten mevcut: {exists.display_name} (profile_id={exists.aoe_profile_id})")
             else:
                 p = Player(
                     player_id=str(pid_int),
@@ -197,7 +197,7 @@ with st.form("add_player_form"):
                 )
                 db.add(p)
                 db.commit()
-                st.success(f"Added {new_name} (profile_id={pid_int}) to watchlist.")
+                st.success(f"{new_name} (profile_id={pid_int}) İzleme listesine eklendi.")
         finally:
             db.close()
 
@@ -238,17 +238,17 @@ else:
         try:
             p = db.query(Player).filter(Player.aoe_profile_id == selected_pid).first()
             if not p:
-                st.error("Selected player no longer exists.")
+                st.error("Seçilen oyuncu artık mevcut değil.")
             else:
                 with st.form("edit_player_form"):
-                    edit_name = st.text_input("Display Name", value=p.display_name or "")
+                    edit_name = st.text_input("Görünen İsim / Display Name", value=p.display_name or "")
                     edit_steam = st.text_input("SteamID64", value=p.steam_id or "")
                     col_a, col_b = st.columns(2)
                     with col_a:
-                        lbl_save = "Kaydet" if lang == "tr" else "Save Changes"
+                        lbl_save = get_text("profile.save_changes", lang)
                         save = st.form_submit_button(lbl_save)
                     with col_b:
-                        lbl_del = "Sil" if lang == "tr" else "Remove Player"
+                        lbl_del = get_text("profile.remove_player", lang)
                         delete = st.form_submit_button(lbl_del)
 
                     if save:
@@ -256,30 +256,30 @@ else:
                         p.steam_id = edit_steam.strip() or None
                         db.add(p)
                         db.commit()
-                        st.success("Updated player.")
+                        st.success(get_text("profile.updated", lang))
                         time.sleep(0.5)
                         st.rerun()
 
                     if delete:
                         db.delete(p)
                         db.commit()
-                        st.success("Removed player.")
+                        st.success(get_text("profile.removed", lang))
                         time.sleep(0.5)
                         st.rerun()
         finally:
             db.close()
 
 st.markdown("---")
-st.markdown(f"### 🔧 {get_text('admin.fix_names', lang) if 'admin.fix_names' in locals() else 'Fix Missing Names'}")
+st.markdown(f"### 🔧 {get_text('admin.fix_names_title', lang)}")
 
-if st.button("🔍 Find and Resolve Missing Player Names"):
+if st.button(f"🔍 {get_text('admin.fix_names_btn', lang)}"):
     import requests
     import json
     from services.db.database import SessionLocal
     from services.db.models import Player
     
     status_cont = st.empty()
-    status_cont.info("Scanning for players with missing names...")
+    status_cont.info(get_text('admin.fix_names_info', lang))
     
     db = SessionLocal()
     try:
@@ -293,9 +293,9 @@ if st.button("🔍 Find and Resolve Missing Player Names"):
                 target_players.append(p)
         
         if not target_players:
-            status_cont.success("No players found with missing names.")
+            status_cont.success(get_text('admin.no_missing_names', lang))
         else:
-            status_cont.info(f"Found {len(target_players)} players to resolve. Calling API...")
+            status_cont.info(f"{len(target_players)} oyuncu bulundu. API çağrılıyor...")
             
             # Batch them
             ids_to_resolve = [p.aoe_profile_id for p in target_players]
@@ -337,7 +337,7 @@ if st.button("🔍 Find and Resolve Missing Player Names"):
                 except Exception as e:
                     st.error(f"Request failed: {e}")
             
-            status_cont.success(f"Resolved names for {updated_count} players.")
+            status_cont.success(get_text('admin.resolved_names', lang).format(count=updated_count))
             
     finally:
         db.close()
@@ -345,10 +345,10 @@ if st.button("🔍 Find and Resolve Missing Player Names"):
 st.markdown("---")
 
 # --- PLAYER IMAGE UPLOAD SECTION ---
-st.markdown("### 🖼️ Player Images")
-st.caption("Upload profile pictures for Fun Charts.")
+st.markdown(f"### 🖼️ {get_text('admin.player_images', lang)}")
+st.caption("Grafikler için oyuncu profil resimleri yükleyin.")
 
-with st.expander("Upload Player Image", expanded=True):
+with st.expander(get_text('admin.upload_image', lang), expanded=True):
     db_img = SessionLocal()
     try:
         all_players_img = db_img.query(Player).filter(Player.added_at.isnot(None)).all()
@@ -356,12 +356,12 @@ with st.expander("Upload Player Image", expanded=True):
         db_img.close()
 
     if not all_players_img:
-        st.info("No players found.")
+        st.info(get_text('common.no_data', lang))
     else:
         p_options = {p.aoe_profile_id: f"{p.display_name} ({p.aoe_profile_id})" for p in all_players_img}
-        selected_pid_img = st.selectbox("Select Player", options=list(p_options.keys()), format_func=lambda x: p_options[x], key="img_uploader_select")
+        selected_pid_img = st.selectbox(get_text('admin.select_player_img', lang), options=list(p_options.keys()), format_func=lambda x: p_options[x], key="img_uploader_select")
         
-        uploaded_file = st.file_uploader("Choose an image...", type=['png', 'jpg', 'jpeg'], key="img_uploader_file")
+        uploaded_file = st.file_uploader(get_text('admin.choose_image', lang), type=['png', 'jpg', 'jpeg'], key="img_uploader_file")
         
         if uploaded_file is not None and selected_pid_img:
             from PIL import Image
@@ -373,15 +373,15 @@ with st.expander("Upload Player Image", expanded=True):
             
             save_path = os.path.join(base_dir, f"{selected_pid_img}.png")
             
-            if st.button("Save Image"):
+            if st.button(get_text('admin.upload_btn', lang)):
                 try:
                     image = Image.open(uploaded_file)
                     image = image.convert("RGBA")
                     image.thumbnail((200, 200)) 
                     image.save(save_path, "PNG")
-                    st.success(f"Saved image for {p_options[selected_pid_img]}!")
+                    st.success(get_text('admin.saved_image', lang).format(name=p_options[selected_pid_img]))
                 except Exception as e:
-                    st.error(f"Error saving image: {e}")
+                    st.error(f"{get_text('common.error', lang)}: {e}")
 st.markdown(f"### 📚 {get_text('admin.ref_data', lang)}")
 
 import pandas as pd
@@ -440,13 +440,13 @@ try:
             use_container_width=True
         )
         
-        if st.button("Save Civilizations", key="btn_save_civ"):
+        if st.button(get_text('admin.save_civs', lang), key="btn_save_civ"):
             # We can't easily detect which rows changed from dataframe alone without tracking state or comparing.
             # But since it's small, we just save all displayed rows (or original full DF if we filtered).
             # Wait, if we filtered, edited_civs is partial. We should only update those.
             # Correct approach:
             cnt = save_ref_changes(RefCiv, edited_civs, db, "civ_id")
-            st.success(f"Updated {cnt} rows.")
+            st.success(get_text('admin.updated_rows', lang).format(count=cnt))
             time.sleep(1)
             st.rerun()
 
@@ -468,9 +468,9 @@ try:
             use_container_width=True
         )
         
-        if st.button("Save Maps", key="btn_save_map"):
+        if st.button(get_text('admin.save_maps', lang), key="btn_save_map"):
             cnt = save_ref_changes(RefMap, edited_maps, db, "map_id")
-            st.success(f"Updated {cnt} rows.")
+            st.success(get_text('admin.updated_rows', lang).format(count=cnt))
             time.sleep(1)
             st.rerun()
 
