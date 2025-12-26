@@ -1,0 +1,45 @@
+import requests
+import json
+
+url = "https://aoe-api.worldsedgelink.com/community/leaderboard/getRecentMatchHistory"
+profile_id = 5587599 
+# We need to send profile_ids as JSON string inside data
+payload = {
+    "title": "age2",
+    "profile_ids": json.dumps([profile_id])
+}
+
+print(f"Fetching match history for {profile_id}...", flush=True)
+
+try:
+    resp = requests.post(url, data=payload, timeout=20)
+    print(f"Status: {resp.status_code}", flush=True)
+    
+    if resp.status_code == 200:
+        data = resp.json()
+        stats = data.get("matchHistoryStats", [])
+        if stats:
+            m = stats[0]
+            print("\n--- Match Keys ---", flush=True)
+            print(list(m.keys()), flush=True)
+            
+            # Check map info
+            map_obj = m.get("matchhistorymap")
+            print("\n--- matchhistorymap ---", flush=True)
+            if map_obj:
+                print(json.dumps(map_obj, indent=2), flush=True)
+            else:
+                print("None", flush=True)
+                
+            # Check root level map info
+            print("\n--- Root Level Map Info ---", flush=True)
+            print(f"mapname: {m.get('mapname')}", flush=True)
+            print(f"map_id (if exists): {m.get('map_id')}", flush=True)
+            print(f"mapID (if exists): {m.get('mapID')}", flush=True)
+        else:
+            print("No matches found.")
+    else:
+        print(f"Error: {resp.text[:200]}")
+
+except Exception as e:
+    print(f"Exception: {e}")

@@ -1,0 +1,12 @@
+streamlit
+pandas
+psycopg2-binary
+sqlalchemy
+duckdb
+requests
+pydantic
+pydantic-settings
+alembic
+plotly
+redis
+schedule
