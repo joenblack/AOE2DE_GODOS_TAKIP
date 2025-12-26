@@ -10,3 +10,5 @@ alembic
 plotly
 redis
 schedule
+
+matplotlib
