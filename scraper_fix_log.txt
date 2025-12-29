@@ -1,0 +1,29 @@
+INFO:__main__:Fetching https://www.aoe2insights.com/user/5587599/matches/?page=1...
+INFO:__main__:Found 10 match tiles.
+----------------------------------------
+DATE DEBUG
+Date Span Found. Title: 'Dec. 28, 2025, 11:08 p.m.' Text: '10áhours ago' Parent: <small><span title="Dec. 28, 2025, 11:08 p.m." v-tooltip="">10áhours ago</span></small>
+----------------------------------------
+RATING DEBUG
+Team 1:
+  Player: DaRKN' | Rating Small HTML: <small class="rating">
+<span>1606</span>
+<span class="text-success rating-change">
+                                                +7
+                                            </span>
+</small>
+  Text content: |1606|
+|
+                                                +7
+                                            |
+Team 2:
+  Player: CAKIR | Rating Small HTML: <small class="rating">
+<span>1383</span>
+<span class="text-danger rating-change">
+                                                -7
+                                            </span>
+</small>
+  Text content: |1383|
+|
+                                                -7
+                                            |

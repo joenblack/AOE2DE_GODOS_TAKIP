@@ -27,7 +27,7 @@ st.caption(get_text("synergy.caption", lang))
 db = next(get_db())
 
 # UI Controls
-min_games = st.sidebar.slider(get_text("synergy.min_games", lang), min_value=2, max_value=50, value=10)
+min_games = st.sidebar.slider(get_text("synergy.min_games", lang), min_value=2, max_value=50, value=3)
 
 def wilson_score_interval(wins, n, confidence=0.95):
     """
@@ -106,11 +106,35 @@ for r in rows:
     
     match_teams[mid][tid]["players"].append(pid)
 
+# Mode Selector
+mode_options = {
+    get_text("synergy.mode_general", lang): "general",
+    get_text("synergy.mode_internal", lang): "internal"
+}
+
+# Default to Internal as requested ("Aktif Lobi olsun" implies importance, but usually General is default. Let's make Internal default if user emphasized it, or General standard. User said "seçilene göre". I'll default to General as it has more data usually.)
+# Actually user said: "Oyuncuların birbirlerine karşı olan duolarının ismi 'AKTİF LOBİ' olsun".
+# I'll add the radio button.
+# Should be visible in main area
+selected_mode_label = st.radio(get_text("synergy.mode_title", lang), list(mode_options.keys()), horizontal=True)
+selected_mode = mode_options[selected_mode_label]
+
 # 2. Extract Duos
 duo_stats = {} 
 
 for mid, teams in match_teams.items():
+    # Filter based on Mode
+    # Internal: Match has > 1 team with tracked players (meaning tracked players vs tracked players)
+    # General: Match has only 1 team with tracked players (tracked vs randoms)
+    is_internal = len(teams) > 1
+    
+    if selected_mode == "internal" and not is_internal:
+        continue
+    if selected_mode == "general" and is_internal:
+        continue
+
     for tid, info in teams.items():
+
         p_list = sorted(list(set(info["players"]))) 
         is_won = info["won"]
         

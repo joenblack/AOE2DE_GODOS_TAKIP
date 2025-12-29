@@ -15,7 +15,8 @@ class Player(Base):
     
     player_id = Column(String, primary_key=True) # generic ID
     steam_id = Column(String, unique=True, nullable=True)
-    aoe_profile_id = Column(Integer, unique=True, nullable=False, index=True)
+    aoe_profile_id = Column(Integer, unique=True, nullable=False, index=True) # WorldsEdge / Relic ID
+    aoe2insights_id = Column(Integer, unique=True, nullable=True) # Matches scraper ID if different
     display_name = Column(String)
     country = Column(String, nullable=True) # ISO 2 chars usually
     elo_rm_1v1 = Column(Integer, nullable=True)

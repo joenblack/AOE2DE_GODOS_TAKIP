@@ -10,6 +10,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")
 
 from app.components.sidebar import render_sidebar
 from services.db.database import get_db
+from services.db.models import Player
 from services.i18n import get_text
 
 st.set_page_config(page_title="Analytics Explorer", layout="wide")
@@ -224,7 +225,8 @@ with tab3:
             mp.civ_name, 
             mp.won,
             mp.elo_after,
-            mp.team
+            mp.team,
+            m.is_ranked
         FROM matches m
         JOIN match_players mp ON m.match_id = mp.match_id
         JOIN players p ON mp.aoe_profile_id = p.aoe_profile_id
@@ -234,7 +236,7 @@ with tab3:
     try:
         results = db.execute(query_raw).fetchall()
         if results:
-            df_raw = pd.DataFrame(results, columns=["match_id", "started_at", "map_name", "player", "civ_name", "won", "elo", "team"])
+            df_raw = pd.DataFrame(results, columns=["match_id", "started_at", "map_name", "player", "civ_name", "won", "elo", "team", "is_ranked"])
             
             # --- INFERENCE LOGIC (Fill None based on opponents) ---
             # Group by match_id to find known results
@@ -269,12 +271,14 @@ with tab3:
                         if inferred is not None:
                             df_raw.at[idx, "won"] = inferred
 
-            # Drop team column as it's not requested for display, or keep? 
-            # User image didn't show it, let's look at rename map.
-            # We'll drop it to keep UI clean matching previous state.
-            df_display = df_raw.drop(columns=["team", "match_id"]) # Also dropping match_id from display if redundant? 
-            # Wait, user screenshot shows 'Maç ID'. Let's keep it.
-            df_display = df_raw.drop(columns=["team"])
+            # Map is_ranked to string
+            df_raw["ranking_type"] = df_raw["is_ranked"].apply(lambda x: "RANKED" if x else "UNRANKED")
+
+            # Result formatting
+            # ...
+
+            # Drop team and raw is_ranked column, keep ranking_type
+            df_display = df_raw.drop(columns=["team", "is_ranked"])
             
             # Localize Columns
             df_display.rename(columns={
@@ -284,7 +288,8 @@ with tab3:
                 "player": get_text("common.player", lang),
                 "civ_name": get_text("common.civ", lang),
                 "won": get_text("table.result", lang),
-                "elo": get_text("analytics.col_elo", lang)
+                "elo": get_text("analytics.col_elo", lang),
+                "ranking_type": "Tip" if lang == "tr" else "Type"
             }, inplace=True)
             
             st.dataframe(df_display, use_container_width=True)

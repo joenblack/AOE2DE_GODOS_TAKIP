@@ -284,7 +284,19 @@ def _parse_match(stat: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         # Let's verify against ladder_type too if rating is missing for some reason but it is ranked.
         # Actually user said: "is_ranked (member’da rating delta var mı? oldrating/newrating dolu mu?)"
         # We already populate 'rating' in players list if found.
-        is_ranked = has_rating_info
+        # is_ranked heuristic: if we have rating info AND ladder_type is not Unranked/Lobby (unless explicitly Ranked)
+        # However, relying solely on rating info can be misleading if API returns current rating for unranked games.
+        # Let's combine ladder_type knowledge with rating info.
+        
+        # Valid Ranked Types usually: 3 (Ranked 1v1), 4 (Ranked Team), 13 (EW 1v1), 14 (EW Team)
+        # Unranked Types: 0 (Unranked), 1, 2 (DM), 5 (Random Map), 6 (Lobby 1v1 - often unranked), 7...
+        # But 'has_rating_info' means we saw a newrating/oldrating.
+        
+        # If ladder_type contains "Unranked", force False.
+        if "Unranked" in ladder_type:
+             is_ranked = False
+        else:
+             is_ranked = has_rating_info
         
         # is_1v1: 2 players, 2 teams
         is_1v1 = (player_count == 2 and team_count == 2)
@@ -440,6 +452,17 @@ def process_matches(db: Session, tracked_profile_ids: List[int], matches_data: L
     inserted_match_players = 0
     backfilled_matches = 0
 
+    # ID MAPPING: AoE2Insights ID -> Relic ID (aoe_profile_id)
+    # Fetch map from DB
+    a2i_map = {}
+    try:
+        players_with_a2i = db.query(Player.aoe_profile_id, Player.aoe2insights_id).filter(Player.aoe2insights_id.isnot(None)).all()
+        for r_pid, r_a2id in players_with_a2i:
+             if r_a2id:
+                 a2i_map[int(r_a2id)] = int(r_pid)
+    except Exception as e:
+        logger.error(f"Error building A2I map: {e}")
+
     # DEDUPLICATION: Matches might appear multiple times if fetched via multiple players
     # Keep only one instance per match ID
     unique_matches_data = []
@@ -450,6 +473,19 @@ def process_matches(db: Session, tracked_profile_ids: List[int], matches_data: L
             seen_match_ids.add(mid)
             unique_matches_data.append(m)
             
+            # Apply ID Mapping immediately
+            if "players" in m:
+                for p in m["players"]:
+                    c_pid = p.get("profile_id")
+                    if c_pid is not None:
+                        try:
+                            c_pid_int = int(c_pid)
+                            if c_pid_int in a2i_map:
+                                p["profile_id"] = a2i_map[c_pid_int]
+                                # logger.debug(f"Mapped A2I ID {c_pid_int} to Relic ID {a2i_map[c_pid_int]}")
+                        except ValueError:
+                            pass
+
     matches_data = unique_matches_data # Replace original list
 
     # --- REF DATA SYNC START ---
@@ -632,16 +668,19 @@ def process_matches(db: Session, tracked_profile_ids: List[int], matches_data: L
                 if not current_last or m["started_at"] > current_last:
                     p_obj.last_match_at = m["started_at"]
                     
+                    
                     # Update ELO from this match if it's the latest
-                    rating = pl.get("rating")
-                    if rating is not None:
-                        ladder = m.get("ladder_type") or ""
-                        # Simple heuristic for 1v1 vs Team
-                        # Prioritize Ranked RM if possible, but for now update on any matching type
-                        if "1v1" in ladder:
-                            p_obj.elo_rm_1v1 = rating
-                        elif "Team" in ladder or "2v2" in ladder or "3v3" in ladder or "4v4" in ladder:
-                            p_obj.elo_rm_team = rating
+                    # DISABLED: User requested to ONLY use WorldsEdgeLink for ELO (via update_player_elo_from_relic)
+                    # A2I match data might have outdated or incorrect ELO.
+                    # rating = pl.get("rating")
+                    # if rating is not None:
+                    #     ladder = m.get("ladder_type") or ""
+                    #     # Simple heuristic for 1v1 vs Team
+                    #     # Prioritize Ranked RM if possible, but for now update on any matching type
+                    #     if "1v1" in ladder:
+                    #         p_obj.elo_rm_1v1 = rating
+                    #     elif "Team" in ladder or "2v2" in ladder or "3v3" in ladder or "4v4" in ladder:
+                    #         p_obj.elo_rm_team = rating
                             
                     db.add(p_obj)
 
@@ -651,30 +690,32 @@ def process_matches(db: Session, tracked_profile_ids: List[int], matches_data: L
                 try:
                     changed = False
                     new_civ = str(pl.get("civ") or "Unknown")
-                    if (not mp.civ_name or mp.civ_name == "Unknown") and new_civ != "Unknown":
+                    if new_civ != "Unknown" and mp.civ_name != new_civ:
                         mp.civ_name = new_civ
                         changed = True
                     
-                    # Also update civ_id if missing
-                    # pl.get("civ_id") comes from _parse_match
-                    if mp.civ_id is None and pl.get("civ_id") is not None:
-                        mp.civ_id = pl.get("civ_id")
+                    # Also update civ_id if different or missing
+                    new_civ_id = pl.get("civ_id")
+                    if new_civ_id is not None and mp.civ_id != new_civ_id:
+                        mp.civ_id = new_civ_id
                         changed = True
                     
                     new_rating_after = pl.get("rating_after")
-                    if mp.elo_after is None and new_rating_after is not None:
-                        mp.elo_after = new_rating_after
-                        changed = True
+                    if new_rating_after is not None and mp.elo_after != new_rating_after:
+                         mp.elo_after = new_rating_after
+                         changed = True
 
                     new_rating_before = pl.get("rating_before")
-                    if mp.elo_before is None and new_rating_before is not None:
-                        mp.elo_before = new_rating_before
-                        changed = True
+                    if new_rating_before is not None and mp.elo_before != new_rating_before:
+                         mp.elo_before = new_rating_before
+                         changed = True
+
                         
                     if changed:
                         db.add(mp)
-                except Exception:
-                    pass
+                        backfilled_matches += 1 # Count as updated/backfilled
+                except Exception as e:
+                    logger.error(f"Error updating match player {match_id} / {aoe_pid}: {e}")
             else:
                 # Insert new MatchPlayer
                 mp = MatchPlayer(
@@ -697,7 +738,7 @@ def process_matches(db: Session, tracked_profile_ids: List[int], matches_data: L
     return {
         "inserted_matches": inserted_matches,
         "inserted_match_players": inserted_match_players,
-        "backfilled_matches": backfilled_matches,
+        "backfilled_matches": backfilled_matches, # This now tracks updates to match players
     }
 
 
@@ -705,3 +746,80 @@ def process_matches(db: Session, tracked_profile_ids: List[int], matches_data: L
 def get_last_http() -> Dict[str, Any]:
     """Return the last WorldsEdgeLink request info (url/status_code) for debugging."""
     return dict(LAST_HTTP)
+
+def fix_match_player_ids(db: Session, player: Player):
+    """
+    Updates MatchPlayer records that might have been saved with AoE2Insights ID 
+    instead of the correct Relic ID.
+    """
+    if not player.aoe2insights_id or player.aoe2insights_id == player.aoe_profile_id:
+        return
+        
+    try:
+        updated = db.query(MatchPlayer).filter(MatchPlayer.aoe_profile_id == player.aoe2insights_id).update({MatchPlayer.aoe_profile_id: player.aoe_profile_id})
+        if updated > 0:
+            db.commit()
+            logger.info(f"Fixed {updated} MatchPlayer records for {player.display_name} (ID {player.aoe2insights_id} -> {player.aoe_profile_id})")
+    except Exception as e:
+        logger.error(f"Error fixing match player IDs: {e}")
+        db.rollback()
+
+def update_player_elo_from_relic(db: Session, player: Player):
+    """
+    Fetches the latest ELO (1v1 RM and Team RM) from WorldsEdgeLink API
+    using the player's Relic ID (aoe_profile_id) and updates the database.
+    """
+    pid = player.aoe_profile_id
+    if not pid:
+        return
+
+    logger.info(f"Fetching Relic ELO for {player.display_name} (ID: {pid})...")
+    url = f"{WORLDSEDGE_BASE_URL}/community/leaderboard/getPersonalStat"
+    
+    try:
+        # Request stats for the player
+        # We need to map 'members' list. Each member obj has 'leaderboard_id' usually?
+        payload = {"title": TITLE, "profile_ids": json.dumps([int(pid)])}
+        
+        resp = requests.post(url, data=payload, timeout=10)
+        
+        if resp.status_code != 200:
+            logger.error(f"Relic API error {resp.status_code} for {pid}")
+            return
+            
+        data = resp.json()
+        
+        # NOTE: Relic API returns 'leaderboardStats' at the root level for the requested profile(s).
+        # This is better than parsing statGroups->members.
+        lb_stats = data.get("leaderboardStats", [])
+        updated_any = False
+        
+        for stat in lb_stats:
+            # Check if this stat block belongs to our profile (if API returns mixed results)
+            # Actually leaderboardStats usually doesn't have profile_id inside it? 
+            # Wait, debug output showed statgroup_id, leaderboard_id, rating. No profile_id.
+            # But the response structure implies these stats belong to the requested profile_ids.
+            # If we requested ONLY ONE profile_id, these stats belong to it.
+            # If multiple, it might be ambiguous or requires statgroup_id mapping.
+            # Since we request only [int(pid)], we can assume these stats are for that player.
+            
+            lb_id = stat.get("leaderboard_id")
+            rating = stat.get("rating")
+            
+            if rating is not None:
+                if lb_id == 3: # 1v1 RM
+                    player.elo_rm_1v1 = int(rating)
+                    updated_any = True
+                elif lb_id == 4: # Team RM
+                    player.elo_rm_team = int(rating)
+                    updated_any = True
+        
+        if updated_any:
+            player.last_seen_at = datetime.utcnow() # Update updated time
+            db.commit()
+            logger.info(f"Updated ELO for {player.display_name}: 1v1={player.elo_rm_1v1}, Team={player.elo_rm_team}")
+        else:
+            logger.info(f"No ELO found for {player.display_name} in leaderboardStats")
+
+    except Exception as e:
+        logger.error(f"Failed to update Relic ELO for {pid}: {e}")

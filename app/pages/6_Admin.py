@@ -12,6 +12,7 @@ from services.db.database import SessionLocal
 from services.db.models import Player
 from services.etl.fetcher import resolve_profile_from_steam_id
 from services.worker import run_daily_update
+from services.analysis.aggregator import Aggregator
 from services.i18n import get_text
 from app.components.sidebar import render_sidebar
 
@@ -67,71 +68,117 @@ with st.expander(f"🚨 {get_text('admin.data_repair', lang)}", expanded=False):
         finally:
             db.close()
 
-col1, col2 = st.columns([1, 3])
-
-with col1:
-    if st.button(get_text("admin.trigger_update", lang), use_container_width=True):
-        with st.spinner(get_text("admin.updating", lang)):
-            # Force reload worker and fetcher to pick up hotfixes
-            import importlib
-            import services.etl.fetcher
-            import services.worker
-            importlib.reload(services.etl.fetcher)
-            importlib.reload(services.worker)
-            from services.worker import run_daily_update
-            
-            st.session_state["update_summary"] = run_daily_update()
-            st.rerun()
-
-    # Display update summary if available
-    if "update_summary" in st.session_state:
-        summary = st.session_state["update_summary"]
-        
-        st.markdown(f"### 🛠 {get_text('admin.update_diagnostics', lang)}")
-        
-        # Primary success / warning messaging
-        errors = summary.get("errors") or []
-        inserted_matches = int(summary.get("inserted_matches") or 0)
-        backfilled_matches = int(summary.get("backfilled_matches") or 0)
-        inserted_mps = int(summary.get("inserted_match_players") or 0)
-        matches_fetched = int(summary.get("matches_fetched") or 0)
-        tracked = int(summary.get("players_tracked") or 0)
-
-        if errors:
-            st.error(get_text("admin.update_issues", lang))
-            for e in errors:
-                st.write(f"- {e}")
+with st.expander(f"📚 {get_text('admin.backfill_history', lang)}", expanded=False):
+    st.info(get_text('admin.backfill_info', lang))
+    
+    # Select players
+    db_bf = SessionLocal()
+    tracked_bf = db_bf.query(Player).filter(Player.added_at.isnot(None)).all()
+    db_bf.close()
+    
+    bf_options = {p.aoe_profile_id: f"{p.display_name}" for p in tracked_bf}
+    safe_bf_ids = list(bf_options.keys())
+    
+    selected_bf_ids = st.multiselect(get_text("profile.select_player", lang), options=safe_bf_ids, format_func=lambda x: bf_options[x], default=safe_bf_ids)
+    
+    if st.button(get_text("admin.start_backfill", lang)):
+        if not selected_bf_ids:
+            st.warning(get_text("common.no_data", lang))
         else:
-            st.success(get_text("admin.update_success", lang))
+            import services.etl.aoe2insights as a2i
+            import services.etl.fetcher as fetcher
+            from services.db.database import SessionLocal
+            from services.db.models import Match
+            
+            # Progress bar
+            pbar = st.progress(0.0)
+            status_text = st.empty()
+            
+            total_players = len(selected_bf_ids)
+            total_inserted = 0
+            
+            db = SessionLocal()
+            
+            # Pre-fetch known match IDs to stop scraping early
+            # Pre-fetch known match IDs to stop scraping early
+            known_ids = {m[0] for m in db.query(Match.match_id).all()}
+            st.text(f"DEBUG: Found {len(known_ids)} existing matches in DB for optimization check.")
+            
+            try:
+                for idx, pid in enumerate(selected_bf_ids):
+                    player_name = bf_options.get(pid, pid)
+                    status_text.text(get_text("admin.fetching_history", lang).format(player=player_name, current=idx+1, total=total_players))
+                    
+                    # Determine which ID to use for scraping
+                    scrape_pid = pid
+                    p_obj = db.query(Player).filter(Player.aoe_profile_id == pid).first()
+                    if p_obj and p_obj.aoe2insights_id:
+                        scrape_pid = p_obj.aoe2insights_id
+                        st.info(f"Using AoE2Insights ID: {scrape_pid} (Relic ID: {pid})")
+                    
+                    # Fetch
+                    # Note: Increased max_pages to 5000 to cover very active players.
+                    matches_data = a2i.fetch_full_match_history(scrape_pid, max_pages=5000, known_match_ids=known_ids)
+                    status_text.text(get_text("admin.fetched_processing", lang).format(count=len(matches_data), player=player_name))
+                    
+                    if matches_data:
+                        # Process
+                        stats = fetcher.process_matches(db, [pid], matches_data)
+                        
+                        # Fix any potential ID mismatches for existing data
+                        if p_obj:
+                            fetcher.fix_match_player_ids(db, p_obj)
+                            
+                            # Fetch current ELO from Relic (Ensuring we use Relic ID)
+                            # User Requirement: Use WorldsEdgeLink for ELO, A2I for history.
+                            st.text(f"Fetching current ELO from WorldsEdgeLink (ID: {p_obj.aoe_profile_id})...")
+                            fetcher.update_player_elo_from_relic(db, p_obj)
+                            
+                        inserted = stats.get("inserted_matches", 0)
+                        updated = stats.get("backfilled_matches", 0)
+                        total_inserted += inserted
+                        st.write(f"✅ {player_name}: Scraped {len(matches_data)} matches. New: {inserted}, Updated: {updated}")
+                    else:
+                        st.write(f"⚠️ {player_name}: No matches found via scraper.")
+                    
+                    pbar.progress((idx + 1) / total_players)
+                    time.sleep(0.5) 
+                
+                st.success(get_text("admin.backfill_complete", lang).format(count=total_inserted))
+                
+                # Force refresh of all aggregates
+                st.info("İstatistik tabloları yeniden hesaplanıyor (Aggregates)...")
+                Aggregator(db).refresh_all()
+                st.success("Tüm istatistikler güncellendi.")
+            except Exception as e:
+                st.error(f"Error: {e}")
+            finally:
+                db.close()
 
-        st.info(
-            f"Tracked players: {tracked} | Matches fetched: {matches_fetched} | "
-            f"Inserted matches: {inserted_matches} | Backfilled matches: {backfilled_matches} | "
-            f"Inserted match-player rows: {inserted_mps}"
-        )
 
-        with st.expander("Raw update summary"):
-            st.json(summary)
 
-        if st.button(get_text("admin.close_diagnostics", lang)):
-            del st.session_state["update_summary"]
-            st.rerun()
+# Daily Update Removed per request
+st.write("")
 
-with col2:
-    st.info(get_text("admin.manual_trigger_info", lang))
+
+
 
 st.markdown("---")
 st.markdown(f"### {get_text('admin.player_management', lang)}")
 
 with st.form("add_player_form"):
     st.write(get_text("admin.add_player_title", lang))
-    c1, c2, c3 = st.columns(3)
+    c1, c2 = st.columns(2)
     with c1:
-        new_name = st.text_input(f"{get_text('common.player', lang)} (Optional)")
+        new_name = st.text_input(get_text("common.player_name", lang))
     with c2:
-        new_profile_id = st.text_input("AoE2 Profile ID (RelicLink)", help="Numeric profile_id used by AoE2 DE.")
+        new_steam_id = st.text_input("SteamID64 (Optional)", help="If provided, we will attempt to auto-fill WorldsEdgeLink ID.")
+
+    c3, c4 = st.columns(2)
     with c3:
-        new_steam_id = st.text_input("SteamID64 (Optional)", help="If provided, we will resolve profile_id via WorldsEdgeLink.")
+        new_profile_id = st.text_input("WorldsEdgeLink Profile ID", help="The official Relic/AoE IV/DE profile ID.")
+    with c4:
+        new_a2i_id = st.text_input("AoE2Insights Profile ID (Optional)", help="If different from WorldsEdgeLink ID.")
 
     submitted = st.form_submit_button(get_text("admin.add_player_btn", lang))
 
@@ -139,12 +186,13 @@ with st.form("add_player_form"):
         new_name = (new_name or "").strip()
         new_profile_id = (new_profile_id or "").strip()
         new_steam_id = (new_steam_id or "").strip()
+        new_a2i_id = (new_a2i_id or "").strip()
 
         resolved_alias = None
 
-        # If profile id is missing but steam id exists -> resolve via WorldsEdgeLink
+        # Logic: If Profile ID missing but SteamID present -> Try Resolve
         if not new_profile_id and new_steam_id:
-            # Force reload to ensure we have the latest resolution logic (in case of hotfix)
+            # Force reload to ensure resolution logic
             import importlib
             import services.etl.fetcher
             importlib.reload(services.etl.fetcher)
@@ -152,7 +200,7 @@ with st.form("add_player_form"):
             
             resolved = resolve_profile_from_steam_id(new_steam_id)
             if not resolved:
-                st.error("SteamID64 üzerinden Profil ID bulunamadı. Lütfen Profil ID'yi manuel girin.")
+                st.error("SteamID64 üzerinden WorldsEdgeLink Profil ID bulunamadı. Lütfen WorldsEdgeLink Profil ID'yi manuel girin.")
                 st.stop()
             pid, alias = resolved
             new_profile_id = str(pid)
@@ -162,14 +210,22 @@ with st.form("add_player_form"):
             st.success(f"WorldsEdgeLink üzerinden profile_id={new_profile_id} (alias={alias}) çözüldü.")
 
         if not new_profile_id:
-            st.error("AoE2 Profile ID gereklidir (manuel veya SteamID64 üzerinden).")
+            st.error("WorldsEdgeLink Profile ID gereklidir.")
             st.stop()
 
         try:
             pid_int = int(new_profile_id)
         except ValueError:
-            st.error("Profile ID sayı olmalıdır.")
+            st.error("WorldsEdgeLink Profile ID sayı olmalıdır.")
             st.stop()
+            
+        a2i_int = None
+        if new_a2i_id:
+            try:
+                a2i_int = int(new_a2i_id)
+            except ValueError:
+                st.error("AoE2Insights ID sayı olmalıdır.")
+                st.stop()
 
         if not new_name:
             new_name = resolved_alias or f"PID {pid_int}"
@@ -182,6 +238,7 @@ with st.form("add_player_form"):
                     # Player exists as a stub (from matches), promote to watchlist
                     exists.display_name = new_name
                     exists.steam_id = new_steam_id if new_steam_id else exists.steam_id
+                    if a2i_int: exists.aoe2insights_id = a2i_int # Update A2I ID
                     exists.added_at = datetime.utcnow()
                     db.commit()
                     st.success(f"Mevcut {new_name} (profile_id={pid_int}) oyuncusu İzleme Listesine terfi ettirildi.")
@@ -192,6 +249,7 @@ with st.form("add_player_form"):
                     player_id=str(pid_int),
                     aoe_profile_id=pid_int,
                     steam_id=new_steam_id if new_steam_id else None,
+                    aoe2insights_id=a2i_int, # New field
                     display_name=new_name,
                     added_at=datetime.utcnow(),
                 )
@@ -218,7 +276,8 @@ else:
         [
             {
                 get_text("common.player", lang): p.display_name,
-                "Profile ID": p.aoe_profile_id,
+                "WorldsEdge ID": p.aoe_profile_id,
+                "AoE2Insights ID": p.aoe2insights_id or "",
                 "SteamID64": p.steam_id or "",
                 "Added At (UTC)": getattr(p, "added_at", None),
             }
@@ -242,7 +301,15 @@ else:
             else:
                 with st.form("edit_player_form"):
                     edit_name = st.text_input("Görünen İsim / Display Name", value=p.display_name or "")
+                    
+                    c_edit_1, c_edit_2 = st.columns(2)
+                    with c_edit_1:
+                        edit_we_id = st.text_input("WorldsEdgeLink Profile ID", value=str(p.aoe_profile_id))
+                    with c_edit_2:
+                        edit_a2i_id = st.text_input("AoE2Insights Profile ID", value=str(p.aoe2insights_id) if p.aoe2insights_id else "")
+                        
                     edit_steam = st.text_input("SteamID64", value=p.steam_id or "")
+                    
                     col_a, col_b = st.columns(2)
                     with col_a:
                         lbl_save = get_text("profile.save_changes", lang)
@@ -252,22 +319,146 @@ else:
                         delete = st.form_submit_button(lbl_del)
 
                     if save:
-                        p.display_name = edit_name.strip() or p.display_name
-                        p.steam_id = edit_steam.strip() or None
-                        db.add(p)
-                        db.commit()
-                        st.success(get_text("profile.updated", lang))
-                        time.sleep(0.5)
-                        st.rerun()
+                        try:
+                            new_pid_int = int(edit_we_id)
+                        except ValueError:
+                            st.error("WorldsEdgeLink ID must be a number.")
+                            new_pid_int = p.aoe_profile_id
+                        
+                        new_a2i_int = None
+                        if edit_a2i_id.strip():
+                            try:
+                                new_a2i_int = int(edit_a2i_id)
+                            except ValueError:
+                                st.error("AoE2Insights ID must be a number.")
+                                new_a2i_int = p.aoe2insights_id # Revert or fail? Let's keep old if fail or stop.
+                                st.stop()
+
+                        # Check if PID changed
+                        if new_pid_int != p.aoe_profile_id:
+                            # Check conflict
+                            existing = db.query(Player).filter(Player.aoe_profile_id == new_pid_int).first()
+                            if existing:
+                                st.error(f"Cannot update: Profile ID {new_pid_int} is already assigned to {existing.display_name}.")
+                            else:
+
+                                # Safe to update.
+                                # User REQUEST: "Profil ID değiştirmek oyuncunun diğer hiçbir verilerini değiştirmesin (ne elosu, ne yaptığı maçlar)."
+                                # Strategy: MIGRATE data from old ID to new ID.
+                                # Because Player.player_id is PK, we can't just change it if there are FKs (unless cascade update, which we can't rely on).
+                                # Steps:
+                                # 1. Create NEW Player with new IDs
+                                # 2. Update all child tables to point to NEW IDs
+                                # 3. Delete OLD Player
+                                
+                                from services.db.models import MatchPlayer, AggPlayerDaily, AggPlayerCiv, AggPlayerMap, AggCombat
+                                from sqlalchemy import text
+
+                                # 0. Pre-flight: Nullify old Steam ID to prevent Unique Constraint Error
+                                # Because steam_id is unique, we must free it up before creating the new record with the same steam_id.
+                                p.steam_id = None
+                                # Remove unique constraint on aoe2insights_id too if needed? unique=True nullable=True
+                                # If we are keeping same A2I ID, we must free it.
+                                temp_a2i = p.aoe2insights_id
+                                p.aoe2insights_id = None
+                                db.flush()
+
+                                # 1. Create New Player
+                                new_p = Player(
+
+                                    player_id=str(new_pid_int),
+                                    aoe_profile_id=new_pid_int,
+                                    steam_id=edit_steam.strip() or None,
+                                    aoe2insights_id=new_a2i_int if new_a2i_int else temp_a2i, # Use new if provided, else keep old
+                                    display_name=edit_name.strip() or p.display_name,
+                                    added_at=p.added_at,
+                                    last_seen_at=p.last_seen_at,
+                                    country=p.country,
+                                    elo_rm_1v1=p.elo_rm_1v1,
+                                    elo_rm_team=p.elo_rm_team,
+                                    last_match_at=p.last_match_at
+                                )
+                                db.add(new_p)
+                                db.flush() # Persist new_p so FKs can point to it
+                                
+                                # 2. Migrate Data
+                                # MatchPlayer (references aoe_profile_id)
+                                db.query(MatchPlayer).filter(MatchPlayer.aoe_profile_id == p.aoe_profile_id).update({MatchPlayer.aoe_profile_id: new_pid_int})
+                                
+                                # Aggregates (references player_id)
+                                old_pid_str = p.player_id
+                                new_pid_str = str(new_pid_int)
+                                
+                                db.query(AggPlayerDaily).filter(AggPlayerDaily.player_id == old_pid_str).update({AggPlayerDaily.player_id: new_pid_str})
+                                db.query(AggPlayerCiv).filter(AggPlayerCiv.player_id == old_pid_str).update({AggPlayerCiv.player_id: new_pid_str})
+                                db.query(AggPlayerMap).filter(AggPlayerMap.player_id == old_pid_str).update({AggPlayerMap.player_id: new_pid_str})
+                                
+                                # AggCombat (player_a and player_b)
+                                db.query(AggCombat).filter(AggCombat.player_id == old_pid_str).update({AggCombat.player_id: new_pid_str})
+                                db.query(AggCombat).filter(AggCombat.opponent_id == old_pid_str).update({AggCombat.opponent_id: new_pid_str})
+                                
+                                # 3. Delete Old Player
+                                db.delete(p)
+                                
+                                db.commit()
+                                st.success(f"Oyuncu ID değiştirildi ve veriler taşındı: {p.aoe_profile_id} -> {new_pid_int}")
+                                st.rerun()
+
+                        else:
+                            # Just update metadata
+                            p.display_name = edit_name.strip()
+                            p.steam_id = edit_steam.strip() or None
+                            # Update A2I ID
+                            # Check conflict if new_a2i_int != None
+                            if new_a2i_int and new_a2i_int != p.aoe2insights_id:
+                                conflict = db.query(Player).filter(Player.aoe2insights_id == new_a2i_int).first()
+                                if conflict:
+                                    st.error(f"Bu AoE2Insights ID ({new_a2i_int}) zaten başka bir oyuncuya ait: {conflict.display_name}")
+                                    st.stop()
+                            p.aoe2insights_id = new_a2i_int
+                            
+                            db.commit()
+                            st.success(get_text("common.success", lang))
+                            time.sleep(1)
+                            st.rerun()
+
 
                     if delete:
+                        # Deep Clean: Remove all associated data
+                        from services.db.models import MatchPlayer, Match, AggPlayerDaily, AggPlayerCiv, AggPlayerMap, AggCombat
+                        from sqlalchemy import text
+                        
+                        # 1. Delete Aggregates
+                        db.query(AggPlayerDaily).filter(AggPlayerDaily.player_id == p.player_id).delete()
+                        db.query(AggPlayerCiv).filter(AggPlayerCiv.player_id == p.player_id).delete()
+                        db.query(AggPlayerMap).filter(AggPlayerMap.player_id == p.player_id).delete()
+                        
+                        # AggCombat has two FKs (player_a, player_b). Delete if player is either.
+                        db.query(AggCombat).filter((AggCombat.player_a_id == p.player_id) | (AggCombat.player_b_id == p.player_id)).delete()
+                        
+                        # 2. Delete Player (Cascades to MatchPlayer if configured, but let's be explicitly safe to avoid FK errors if missing)
+                        # We rely on ORM cascade for MatchPlayer usually, but explicit query is robust.
+                        # Note: matches are many-to-many via MatchPlayer.
+                        # We delete the player, which deletes MatchPlayers.
+                        
                         db.delete(p)
+                        db.flush() # Execute deletes
+                        
+                        # 3. Garbage Collection: Delete Matches that have no players left
+                        # Using raw SQL for efficiency/clarity on the "NOT EXISTS" logic
+                        stmt_gc_matches = text("""
+                            DELETE FROM matches 
+                            WHERE match_id NOT IN (SELECT DISTINCT match_id FROM match_players)
+                        """)
+                        db.execute(stmt_gc_matches)
+                        
                         db.commit()
                         st.success(get_text("profile.removed", lang))
-                        time.sleep(0.5)
+                        time.sleep(1.0)
                         st.rerun()
         finally:
             db.close()
+
 
 st.markdown("---")
 st.markdown(f"### 🔧 {get_text('admin.fix_names_title', lang)}")
@@ -476,4 +667,47 @@ try:
 
 finally:
     db.close()
+
+st.markdown("---")
+st.markdown("### ⚠️ Danger Zone")
+
+with st.expander("🗑️ Delete All Match Data (Reset Database)", expanded=False):
+    st.error("WARNING: This will delete ALL matches, statistics, and history. Players (watchlist) will remain, but their history will be wiped.")
+    
+    del_pass = st.text_input("Enter Password to confirm deletion:", type="password", value="delete123")
+    
+    if st.button("🚨 DELETE ALL MATCH DATA 🚨", type="primary"):
+        if del_pass == "delete123":
+            from services.db.models import Match, MatchPlayer, AggCombat, AggPlayerDaily, AggPlayerCiv, AggPlayerMap
+            from sqlalchemy import text
+            
+            db = SessionLocal()
+            try:
+                # Disable foreign key checks for faster/cleaner wipe (sqlite specific, but generic delete is safer)
+                # We will just delete in order.
+                
+                st.info("Deleting aggregates...")
+                db.query(AggCombat).delete()
+                db.query(AggPlayerDaily).delete()
+                db.query(AggPlayerCiv).delete()
+                db.query(AggPlayerMap).delete()
+                
+                st.info("Deleting match players...")
+                # Raw SQL for speed on large tables
+                db.execute(text("DELETE FROM match_players"))
+                
+                st.info("Deleting matches...")
+                db.execute(text("DELETE FROM matches"))
+                
+                db.commit()
+                st.success("✅ Database Wiped Successfully! All match data is gone.")
+                time.sleep(1)
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error executing delete: {e}")
+            finally:
+                db.close()
+        else:
+            st.warning("Incorrect Password!")
+
 

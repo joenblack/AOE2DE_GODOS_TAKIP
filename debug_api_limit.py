@@ -1,7 +1,14 @@
-
 import requests
 import json
 import logging
+import sys
+import subprocess
+
+try:
+    from pydantic_settings import BaseSettings
+except ImportError:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "pydantic-settings", "sqlalchemy", "psycopg2-binary"])
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -41,5 +48,6 @@ def test_fetch_limit(profile_id: int):
 if __name__ == "__main__":
     # Using one of the profile IDs seen in previous logs (sinx or darkn likely one of these)
     # Profile IDs from previous log: 2738674, 4308371, 5525181, 5587599
-    # Let's try 2738674
-    test_fetch_limit(2738674)
+    # Let's try 5587599 (DaRKN)
+    test_fetch_limit(5587599)
+

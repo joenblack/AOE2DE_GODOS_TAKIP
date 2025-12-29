@@ -1,0 +1,13 @@
+INFO:services.etl.aoe2insights:Starting full history backfill for Profile ID: 5587599
+INFO:services.etl.aoe2insights:Fetching page 1: https://www.aoe2insights.com/user/5587599/matches/?page=1
+INFO:services.etl.aoe2insights:Response URL: https://www.aoe2insights.com/user/5587599/matches/?page=1 Status: 200
+INFO:services.etl.aoe2insights:Found 10 match links.
+INFO:services.etl.aoe2insights:Match 0 Container Classes: ['match-tile']
+INFO:services.etl.aoe2insights:Scraped 10 matches total.
+Testing scraper for PID: 5587599
+Fetched 10 matches.
+First match sample:
+{
+  "id": "443648374",
+  "raw_html_debug": "<div class=\"match-tile\">\n<div class=\"col-md-3 d-flex position-relative\" style=\"gap: 0.8rem;\">\n<pictu"
+}

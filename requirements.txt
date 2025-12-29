@@ -12,3 +12,6 @@ redis
 schedule
 
 matplotlib
+beautifulsoup4
+lxml
+

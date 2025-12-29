@@ -39,6 +39,7 @@ TRANSLATIONS = {
     "common.opponent": {"en": "Opponent", "tr": "Rakip"},
     "common.overall": {"en": "Overall", "tr": "Genel"},
     "common.days": {"en": "Days", "tr": "Gün"},
+    "common.player_name": {"en": "Player Name", "tr": "Oyuncu Adı"},
     
     # --- FILTERS ---
     "filter.ladder": {"en": "Ladder Mode", "tr": "Oyun Modu"},
@@ -277,6 +278,17 @@ TRANSLATIONS = {
     "profile.matchups_difficult": {"en": "Most Difficult", "tr": "En Zorlu"},
     "profile.matchups_easiest": {"en": "Easiest", "tr": "En Kolay"},
     "overview.upsets_desc": {"en": "Most wins against statistically stronger opponents.", "tr": "İstatistiksel olarak daha güçlü rakiplere karşı en çok galibiyet."},
+    "synergy.mode_title": {"en": "Calculation Mode", "tr": "Hesaplama Modu"},
+    "synergy.mode_general": {"en": "General Synergy (Vs Others)", "tr": "Genel Sinerji (Başkalarına Karşı)"},
+    "synergy.mode_internal": {"en": "Active Lobby (Internal)", "tr": "Aktif Lobi (Birbirimize Karşı)"},
+    "admin.backfill_history": {"en": "Full History Backfill", "tr": "Tam Geçmiş Yükle (Backfill)"},
+    "admin.backfill_info": {"en": "Fetches COMPLETE match history from aoe2insights.com (bypassing the 50-match limit). Matches are merged with existing database.", "tr": "aoe2insights.com üzerinden TÜM maç geçmişini çeker (50 maç limitini aşar). Maçlar mevcut veritabanı ile birleştirilir."},
+    "admin.start_backfill": {"en": "Start Backfill Process", "tr": "Yüklemeyi Başlat"},
+    "admin.fetching_history": {"en": "Fetching history for {player} ({current}/{total})...", "tr": "{player} geçmişi çekiliyor ({current}/{total})..."},
+    "admin.fetched_processing": {"en": "Fetched {count} matches for {player}. Processing...", "tr": "{player} için {count} maç çekildi. İşleniyor..."},
+    "admin.backfill_complete": {"en": "Backfill Complete! Total new matches inserted: {count}", "tr": "İşlem Tamamlandı! Toplam eklenen maç: {count}"},
+
+
 
 
 }

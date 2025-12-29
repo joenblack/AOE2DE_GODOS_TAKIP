@@ -19,12 +19,11 @@ class Aggregator:
         TRUNCATE -> INSERT pattern is easiest for small datasets.
         """
         try:
-            # 1. Clear aggregated tables (DROP/CREATE to handle schema changes and clean slate)
-            # This is safer than delete() because we changed PK definitions in models.py
+            # 1. Clear aggregated tables (Use DELETE to avoid database locked errors with DROP)
             tables_to_reset = [AggPlayerDaily, AggPlayerCiv, AggPlayerMap, AggCombat]
             for model in tables_to_reset:
-                model.__table__.drop(self.db.bind, checkfirst=True)
-                model.__table__.create(self.db.bind, checkfirst=True)
+                self.db.query(model).delete()
+            self.db.commit()
             
             # self.db.commit() # Create/Drop usually auto-commits in many engines, but commit here is safe.
 
