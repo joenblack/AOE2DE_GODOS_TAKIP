@@ -78,10 +78,10 @@ def fetch_full_match_history(profile_id: int, max_pages: int = 100, known_match_
                     # --- OPTIMIZATION: Stop if match already exists ---
                     # --- OPTIMIZATION: Stop if match already exists ---
                     if known_match_ids and match_id in known_match_ids:
-                        # logger.debug(f"Match {match_id} already exists. Skipping.")
-                        continue
-                        # We used to stop here, but this prevents backfilling gaps.
-                        # return matches_out
+                        logger.info(f"Match {match_id} already exists. Stopping fetch early (User requested optimization).")
+                        # We found a match we already have. Assuming chronological order (newest first),
+                        # everything after this is also old. So we can stop.
+                        return matches_out
                         
                     
                     # 2. Ladder / Type (Map 1v1, RM Team etc)

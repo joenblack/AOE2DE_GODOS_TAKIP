@@ -283,7 +283,7 @@ TRANSLATIONS = {
     "synergy.mode_internal": {"en": "Active Lobby (Internal)", "tr": "Aktif Lobi (Birbirimize Karşı)"},
     "admin.backfill_history": {"en": "Full History Backfill", "tr": "Tam Geçmiş Yükle (Backfill)"},
     "admin.backfill_info": {"en": "Fetches COMPLETE match history from aoe2insights.com (bypassing the 50-match limit). Matches are merged with existing database.", "tr": "aoe2insights.com üzerinden TÜM maç geçmişini çeker (50 maç limitini aşar). Maçlar mevcut veritabanı ile birleştirilir."},
-    "admin.start_backfill": {"en": "Start Backfill Process", "tr": "Yüklemeyi Başlat"},
+    "admin.start_backfill": {"en": "Start Backfill Process", "tr": "Güncellemeyi Başlat"},
     "admin.fetching_history": {"en": "Fetching history for {player} ({current}/{total})...", "tr": "{player} geçmişi çekiliyor ({current}/{total})..."},
     "admin.fetched_processing": {"en": "Fetched {count} matches for {player}. Processing...", "tr": "{player} için {count} maç çekildi. İşleniyor..."},
     "admin.backfill_complete": {"en": "Backfill Complete! Total new matches inserted: {count}", "tr": "İşlem Tamamlandı! Toplam eklenen maç: {count}"},

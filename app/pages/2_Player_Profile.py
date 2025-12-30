@@ -103,7 +103,7 @@ stmt = text(f"""
         m.started_at,
         mp_me.civ_name as my_civ,
         mp_me.won as won,
-        mp_opp.civ_name as opp_civ
+        GROUP_CONCAT(mp_opp.civ_name, ', ') as opp_civ
     FROM matches m
     JOIN match_players mp_me ON m.match_id = mp_me.match_id
     LEFT JOIN match_players mp_opp ON m.match_id = mp_opp.match_id AND mp_opp.aoe_profile_id != :pid
@@ -112,6 +112,7 @@ stmt = text(f"""
       AND mp_me.won IS NOT NULL
       {ladder_sql}
       {date_sql}
+    GROUP BY m.match_id
 """)
 
 rows = db.execute(stmt, params).fetchall()

@@ -34,6 +34,28 @@ with st.expander(f"🚨 {get_text('admin.data_repair', lang)}", expanded=False):
         db = SessionLocal()
         try:
             # 1. Clean Duplicates
+            # 1. Count Duplicates to be removed
+            stmt_count = text("""
+                WITH ranked AS (
+                  SELECT
+                    id,
+                    ROW_NUMBER() OVER (
+                      PARTITION BY match_id, aoe_profile_id
+                      ORDER BY
+                        (won IS NOT NULL) DESC,
+                        (elo_after IS NOT NULL) DESC,
+                        id ASC
+                    ) AS rn
+                  FROM match_players
+                )
+                SELECT COUNT(*) FROM ranked WHERE rn > 1;
+            """)
+            try:
+                cleaned_count = db.execute(stmt_count).scalar()
+            except:
+                cleaned_count = 0
+
+            # 2. Perform Deletion
             stmt_dedupe = text("""
                 WITH ranked AS (
                   SELECT
@@ -50,8 +72,7 @@ with st.expander(f"🚨 {get_text('admin.data_repair', lang)}", expanded=False):
                 DELETE FROM match_players
                 WHERE id IN (SELECT id FROM ranked WHERE rn > 1);
             """)
-            res = db.execute(stmt_dedupe)
-            cleaned_count = res.rowcount
+            db.execute(stmt_dedupe)
             db.commit()
             
             # 2. Add Unique Constraint
@@ -68,92 +89,92 @@ with st.expander(f"🚨 {get_text('admin.data_repair', lang)}", expanded=False):
         finally:
             db.close()
 
-with st.expander(f"📚 {get_text('admin.backfill_history', lang)}", expanded=False):
-    st.info(get_text('admin.backfill_info', lang))
-    
-    # Select players
-    db_bf = SessionLocal()
-    tracked_bf = db_bf.query(Player).filter(Player.added_at.isnot(None)).all()
-    db_bf.close()
-    
-    bf_options = {p.aoe_profile_id: f"{p.display_name}" for p in tracked_bf}
-    safe_bf_ids = list(bf_options.keys())
-    
-    selected_bf_ids = st.multiselect(get_text("profile.select_player", lang), options=safe_bf_ids, format_func=lambda x: bf_options[x], default=safe_bf_ids)
-    
-    if st.button(get_text("admin.start_backfill", lang)):
-        if not selected_bf_ids:
-            st.warning(get_text("common.no_data", lang))
-        else:
-            import services.etl.aoe2insights as a2i
-            import services.etl.fetcher as fetcher
-            from services.db.database import SessionLocal
-            from services.db.models import Match
-            
-            # Progress bar
-            pbar = st.progress(0.0)
-            status_text = st.empty()
-            
-            total_players = len(selected_bf_ids)
-            total_inserted = 0
-            
-            db = SessionLocal()
-            
-            # Pre-fetch known match IDs to stop scraping early
-            # Pre-fetch known match IDs to stop scraping early
-            known_ids = {m[0] for m in db.query(Match.match_id).all()}
-            st.text(f"DEBUG: Found {len(known_ids)} existing matches in DB for optimization check.")
-            
-            try:
-                for idx, pid in enumerate(selected_bf_ids):
-                    player_name = bf_options.get(pid, pid)
-                    status_text.text(get_text("admin.fetching_history", lang).format(player=player_name, current=idx+1, total=total_players))
+st.markdown("### 🔄 Verileri & Eloyu Güncelle")
+st.info(get_text('admin.backfill_info', lang))
+
+# Select players
+db_bf = SessionLocal()
+tracked_bf = db_bf.query(Player).filter(Player.added_at.isnot(None)).all()
+db_bf.close()
+
+bf_options = {p.aoe_profile_id: f"{p.display_name}" for p in tracked_bf}
+safe_bf_ids = list(bf_options.keys())
+
+selected_bf_ids = st.multiselect(get_text("profile.select_player", lang), options=safe_bf_ids, format_func=lambda x: bf_options[x], default=safe_bf_ids)
+
+if st.button(get_text("admin.start_backfill", lang)):
+    if not selected_bf_ids:
+        st.warning(get_text("common.no_data", lang))
+    else:
+        import services.etl.aoe2insights as a2i
+        import services.etl.fetcher as fetcher
+        from services.db.database import SessionLocal
+        from services.db.models import Match
+        
+        # Progress bar
+        pbar = st.progress(0.0)
+        status_text = st.empty()
+        
+        total_players = len(selected_bf_ids)
+        total_inserted = 0
+        
+        db = SessionLocal()
+        
+        # Pre-fetch known match IDs to stop scraping early
+        known_ids = {m[0] for m in db.query(Match.match_id).all()}
+        st.text(f"DEBUG: Found {len(known_ids)} existing matches in DB for optimization check.")
+        
+        try:
+            for idx, pid in enumerate(selected_bf_ids):
+                player_name = bf_options.get(pid, pid)
+                status_text.text(get_text("admin.fetching_history", lang).format(player=player_name, current=idx+1, total=total_players))
+                
+                # Determine which ID to use for scraping
+                scrape_pid = pid
+                p_obj = db.query(Player).filter(Player.aoe_profile_id == pid).first()
+                if p_obj and p_obj.aoe2insights_id:
+                    scrape_pid = p_obj.aoe2insights_id
+                    st.info(f"Using AoE2Insights ID: {scrape_pid} (Relic ID: {pid})")
+                
+                # Fetch
+                # Note: Increased max_pages to 5000 to cover very active players.
+                matches_data = a2i.fetch_full_match_history(scrape_pid, max_pages=5000, known_match_ids=known_ids)
+                status_text.text(get_text("admin.fetched_processing", lang).format(count=len(matches_data), player=player_name))
+                
+                if matches_data:
+                    # Process
+                    stats = fetcher.process_matches(db, [pid], matches_data)
                     
-                    # Determine which ID to use for scraping
-                    scrape_pid = pid
-                    p_obj = db.query(Player).filter(Player.aoe_profile_id == pid).first()
-                    if p_obj and p_obj.aoe2insights_id:
-                        scrape_pid = p_obj.aoe2insights_id
-                        st.info(f"Using AoE2Insights ID: {scrape_pid} (Relic ID: {pid})")
-                    
-                    # Fetch
-                    # Note: Increased max_pages to 5000 to cover very active players.
-                    matches_data = a2i.fetch_full_match_history(scrape_pid, max_pages=5000, known_match_ids=known_ids)
-                    status_text.text(get_text("admin.fetched_processing", lang).format(count=len(matches_data), player=player_name))
-                    
-                    if matches_data:
-                        # Process
-                        stats = fetcher.process_matches(db, [pid], matches_data)
+                    # Fix any potential ID mismatches for existing data
+                    if p_obj:
+                        fetcher.fix_match_player_ids(db, p_obj)
                         
-                        # Fix any potential ID mismatches for existing data
-                        if p_obj:
-                            fetcher.fix_match_player_ids(db, p_obj)
-                            
-                            # Fetch current ELO from Relic (Ensuring we use Relic ID)
-                            # User Requirement: Use WorldsEdgeLink for ELO, A2I for history.
-                            st.text(f"Fetching current ELO from WorldsEdgeLink (ID: {p_obj.aoe_profile_id})...")
-                            fetcher.update_player_elo_from_relic(db, p_obj)
-                            
-                        inserted = stats.get("inserted_matches", 0)
-                        updated = stats.get("backfilled_matches", 0)
-                        total_inserted += inserted
-                        st.write(f"✅ {player_name}: Scraped {len(matches_data)} matches. New: {inserted}, Updated: {updated}")
-                    else:
-                        st.write(f"⚠️ {player_name}: No matches found via scraper.")
-                    
-                    pbar.progress((idx + 1) / total_players)
-                    time.sleep(0.5) 
+                    inserted = stats.get("inserted_matches", 0)
+                    updated = stats.get("backfilled_matches", 0)
+                    total_inserted += inserted
+                    st.write(f"✅ {player_name}: Scraped {len(matches_data)} matches. New: {inserted}, Updated: {updated}")
+                else:
+                    st.write(f"⚠️ {player_name}: No new matches found via scraper.")
                 
-                st.success(get_text("admin.backfill_complete", lang).format(count=total_inserted))
+                # Update ELO from Relic regardless of match results
+                if p_obj:
+                    # Fetch current ELO from Relic (Ensuring we use Relic ID)
+                    st.text(f"Fetching current ELO from WorldsEdgeLink (ID: {p_obj.aoe_profile_id})...")
+                    fetcher.update_player_elo_from_relic(db, p_obj)
                 
-                # Force refresh of all aggregates
-                st.info("İstatistik tabloları yeniden hesaplanıyor (Aggregates)...")
-                Aggregator(db).refresh_all()
-                st.success("Tüm istatistikler güncellendi.")
-            except Exception as e:
-                st.error(f"Error: {e}")
-            finally:
-                db.close()
+                pbar.progress((idx + 1) / total_players)
+                time.sleep(0.5) 
+            
+            st.success(get_text("admin.backfill_complete", lang).format(count=total_inserted))
+            
+            # Force refresh of all aggregates
+            st.info("İstatistik tabloları yeniden hesaplanıyor (Aggregates)...")
+            Aggregator(db).refresh_all()
+            st.success("Tüm istatistikler güncellendi.")
+        except Exception as e:
+            st.error(f"Error: {e}")
+        finally:
+            db.close()
 
 
 
